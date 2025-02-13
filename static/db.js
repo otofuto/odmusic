@@ -185,6 +185,49 @@ class MusicDB {
             store.put(album);
         };
     }
+
+    async removeFromAlbum(albumId, filePath) {
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(['album_songs'], 'readwrite');
+            const store = tx.objectStore('album_songs');
+            
+            const request = store.delete([albumId, filePath]);
+            
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async deleteAlbum(albumId) {
+        return new Promise((resolve, reject) => {
+            const tx = this.db.transaction(['albums', 'album_songs'], 'readwrite');
+            const albumsStore = tx.objectStore('albums');
+            const albumSongsStore = tx.objectStore('album_songs');
+            
+            try {
+                // まずalbum_songsから該当アルバムの曲をすべて削除
+                const index = albumSongsStore.index('album_id');
+                const cursorRequest = index.openCursor(IDBKeyRange.only(albumId));
+                
+                cursorRequest.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor) {
+                        albumSongsStore.delete(cursor.primaryKey);
+                        cursor.continue();
+                    } else {
+                        // 次にアルバム自体を削除
+                        const deleteRequest = albumsStore.delete(albumId);
+                        deleteRequest.onsuccess = () => resolve();
+                        deleteRequest.onerror = () => reject(deleteRequest.error);
+                    }
+                };
+                cursorRequest.onerror = () => reject(cursorRequest.error);
+                
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
 }
 
 const db = new MusicDB();

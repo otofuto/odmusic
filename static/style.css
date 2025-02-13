@@ -5,6 +5,7 @@
     --border-color: #e0e0e0;
     --modal-background: rgba(0, 0, 0, 0.5);
     --player-height: 80px;
+    --danger-color: #ff4d4d;
 }
 
 * {
@@ -307,4 +308,47 @@ header h1::before {
         --text-color: #ffffff;
         --border-color: #333333;
     }
+}
+
+/* 確認モーダル用のスタイル */
+.confirm-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--modal-background);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.confirm-modal-content {
+    background: var(--background-color);
+    padding: 1.5rem;
+    border-radius: 8px;
+    max-width: 90%;
+    width: 400px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.confirm-modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.confirm-modal-buttons button {
+    padding: 0.5rem 1rem;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.confirm-modal-buttons button.danger-button {
+    background: var(--danger-color);
 }

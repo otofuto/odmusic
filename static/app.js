@@ -14,12 +14,18 @@ class App {
         this.newAlbumName = document.getElementById('newAlbumName');
         this.createAlbumButton = document.getElementById('createAlbum');
         this.albumList = document.getElementById('albumList');
+        this.confirmDeleteModal = document.getElementById('confirmDeleteModal');
+        this.confirmDeleteMessage = document.getElementById('confirmDeleteMessage');
+        this.confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        this.confirmCancelBtn = document.getElementById('confirmCancelBtn');
+        this.headerTitle = document.getElementById('headerTitle');
 
         // モーダルを初期状態で非表示にする
         this.albumModal.hidden = true;
         this.albumModal.style.display = 'none';
         
         this.setupEventListeners();
+        this.setupConfirmDeleteModalListeners();
     }
 
     async initialize() {
@@ -44,10 +50,17 @@ class App {
         this.backButton.addEventListener('click', () => this.navigateBack());
         this.albumButton.addEventListener('click', () => this.showAlbumModal());
         this.createAlbumButton.addEventListener('click', () => this.createAlbum());
+        this.headerTitle.addEventListener('click', () => this.moveToMusicFolder());
         
         // 閉じるボタンのイベントリスナーを修正
         const closeButton = this.albumModal.querySelector('.close-button');
         closeButton.addEventListener('click', () => this.hideAlbumModal());
+    }
+
+    setupConfirmDeleteModalListeners() {
+        this.confirmCancelBtn.addEventListener('click', () => {
+            this.hideConfirmDeleteModal();
+        });
     }
 
     showLoading() {
@@ -124,6 +137,15 @@ class App {
                     name: fileName
                 };
                 this.playFile(file);
+            });
+            
+            item.addEventListener('contextmenu', e => {
+                e.preventDefault();
+                this.showConfirmDeleteModal(`アルバムから曲を削除しますか\n${fileName}`, async () => {
+                    await db.removeFromAlbum(this.currentAlbum.id, song.file_path);
+                    await this.loadAlbum(this.currentAlbum);
+                    this.showMessage(`${fileName}を削除しました`);
+                });
             });
             
             this.fileList.appendChild(item);
@@ -291,6 +313,21 @@ class App {
                 }
             });
             
+            item.addEventListener('contextmenu', async (e) => {
+                e.preventDefault();
+                this.showConfirmDeleteModal(`このアルバムを削除しますか\n${album.name}`, async () => {
+                    try {
+                        await db.deleteAlbum(album.id);
+                        await this.refreshAlbumList();
+                        this.showMessage(`アルバム "${album.name}" を削除しました`);
+                        this.moveToMusicFolder()
+                    } catch (error) {
+                        console.error('Error deleting album:', error);
+                        this.showMessage('アルバムの削除中にエラーが発生しました', 'error');
+                    }
+                });
+            });
+            
             this.albumList.appendChild(item);
         });
     }
@@ -302,6 +339,40 @@ class App {
             this.newAlbumName.value = '';
             await this.refreshAlbumList();
         }
+    }
+
+    showConfirmDeleteModal(message, onConfirm) {
+        this.confirmDeleteMessage.textContent = message;
+        this.confirmDeleteModal.hidden = false;
+        this.confirmDeleteModal.style.display = 'flex';
+        
+        // 既存のイベントリスナーを削除
+        const oldConfirmBtn = this.confirmDeleteBtn;
+        const newConfirmBtn = oldConfirmBtn.cloneNode(true);
+        oldConfirmBtn.parentNode.replaceChild(newConfirmBtn, oldConfirmBtn);
+        this.confirmDeleteBtn = newConfirmBtn;
+        
+        // 新しいイベントリスナーを追加
+        this.confirmDeleteBtn.addEventListener('click', async () => {
+            try {
+                await onConfirm();
+                this.hideConfirmDeleteModal();
+                // 曲一覧を再読み込み
+                this.loadAlbum(this.currentAlbum);
+            } catch (error) {
+                console.error('Error during delete operation:', error);
+            }
+        });
+    }
+
+    hideConfirmDeleteModal() {
+        this.confirmDeleteModal.hidden = true;
+        this.confirmDeleteModal.style.display = 'none';
+    }
+
+    async moveToMusicFolder() {
+        this.currentFolderId = await auth.getMusicFolderId();
+        this.loadFolder(this.currentFolderId);
     }
 }
 
