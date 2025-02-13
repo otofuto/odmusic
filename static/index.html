@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:site" content="@nzmncho">
+    <meta name="twitter:creator" content="@nzmncho">
+    <meta property="og:type" content="app">
+    <meta name="twitter:url" property="og:url" content="https://odmusic.otft.info/">
+    <meta name="twitter:title" property="og:title" content="ODMusic">
+    <meta name="twitter:description" property="og:description" content="OneDriveに保存した音楽を再生できるPWA">
+    <meta name="twitter:image" property="og:image" content="https://odmusic.otft.info/icon/icon-512.png">
+    <meta name="description" content="OneDriveに保存した音楽を再生できるPWA">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="white">
+    <meta name="apple-mobile-web-app-title" content="ODMusic">
+    <title>ODMusic</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="favicon.ico">
+    <link rel="apple-touch-icon" href="/icon/icon-512.png">
+    <meta name="theme-color" content="#1d5c89">
+    <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>ODMusic</h1>
+            <button id="albumButton" class="icon-button">
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path fill="currentColor" d="M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12,16.5C9.5,16.5 7.5,14.5 7.5,12C7.5,9.5 9.5,7.5 12,7.5C14.5,7.5 16.5,9.5 16.5,12C16.5,14.5 14.5,16.5 12,16.5M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/>
+                </svg>
+                アルバム
+            </button>
+        </header>
+
+        <nav id="breadcrumb">
+            <button id="backButton" class="icon-button" hidden>
+                <svg viewBox="0 0 24 24" width="24" height="24">
+                    <path fill="currentColor" d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z"/>
+                </svg>
+            </button>
+            <span id="currentPath"></span>
+        </nav>
+
+        <main id="fileList"></main>
+
+        <div id="albumModal" class="modal" hidden>
+            <div class="modal-content">
+                <header class="modal-header">
+                    <h2>アルバム</h2>
+                    <button class="close-button">×</button>
+                </header>
+                <div class="modal-body">
+                    <div class="album-controls">
+                        <input type="text" id="newAlbumName" placeholder="新規アルバム名">
+                        <button id="createAlbum">作成</button>
+                    </div>
+                    <div id="albumList"></div>
+                </div>
+            </div>
+        </div>
+
+        <footer id="player" hidden>
+            <div id="progressBar" class="progress-bar">
+                <div id="progressBarFill" class="progress-bar-fill"></div>
+            </div>
+            <div class="now-playing">
+                <span id="currentTrack"></span>
+                <div id="loadingIndicator" class="loading-indicator">
+                    <div class="loading-spinner"></div>
+                </div>
+            </div>
+            <div class="controls">
+                <button id="nextMusic" class="icon-button">
+                    <svg viewBox="0 0 24 24" width="24" height="24">
+                        <path fill="currentColor" d="M6,18V6L14,12L6,18M16,6V18H18V6"/>
+                    </svg>
+                </button>
+                <button id="loopMode" class="icon-button">
+                    <svg viewBox="0 0 24 24" width="24" height="24">
+                        <path fill="currentColor" d="M17,17H7V14L3,18L7,22V19H19V13H17M7,7H17V10L21,6L17,2V5H5V11H7V7Z"/>
+                    </svg>
+                </button>
+                <button id="playPause" class="icon-button large">
+                    <svg viewBox="0 0 24 24" width="32" height="32">
+                        <path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z"/>
+                    </svg>
+                </button>
+            </div>
+            <audio id="audioPlayer"></audio>
+        </footer>
+    </div>
+    <script src="db.js"></script>
+    <script src="auth.js"></script>
+    <script src="player.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

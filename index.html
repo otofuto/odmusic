@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>OneDriveMusic</title>
+    <script src="https://alcdn.msauth.net/browser/2.32.0/js/msal-browser.min.js"></script>
+</head>
+<body>
+    <button onclick="listMusicFiles()">音楽フォルダの一覧を取得</button>
+
+    <script>
+        const msalConfig = {
+            auth: {
+                clientId: "669901fb-dced-4093-9399-81294ef94997",  // クライアントID
+                authority: "https://login.microsoftonline.com/common",
+                redirectUri: location.href
+            }
+        };
+
+        const msalInstance = new msal.PublicClientApplication(msalConfig);
+
+        async function initializeMsal() {
+            await msalInstance.initialize();
+        }
+
+        async function login() {
+            try {
+                await initializeMsal();
+                const loginResponse = await msalInstance.loginPopup({
+                    scopes: ["Files.Read"]
+                });
+                console.log("ログイン成功:", loginResponse);
+                return loginResponse.account;
+            } catch (error) {
+                console.error("ログインエラー:", error);
+            }
+        }
+
+        async function getAccessToken() {
+            await initializeMsal();
+            let account = msalInstance.getAllAccounts()[0];
+
+            if (!account) {
+                console.log("ユーザーがログインしていません。ログインします...");
+                await login();
+                account = msalInstance.getAllAccounts()[0];
+            }
+
+            if (!account) {
+                console.error("ログインできませんでした。");
+                return null;
+            }
+
+            try {
+                const tokenResponse = await msalInstance.acquireTokenSilent({
+                    scopes: ["Files.Read"],
+                    account: account
+                });
+                return tokenResponse.accessToken;
+            } catch (error) {
+                console.error("トークン取得エラー:", error);
+                return null;
+            }
+        }
+
+        async function getMusicFolderId(accessToken) {
+            const url = "https://graph.microsoft.com/v1.0/me/drive/root/children";
+            const response = await fetch(url, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            const data = await response.json();
+            
+            const musicFolder = data.value.find(item => item.name === "音楽" && item.folder);
+            return musicFolder ? musicFolder.id : null;
+        }
+
+        async function listMusicFiles() {
+            const accessToken = await getAccessToken();
+            if (!accessToken) return;
+
+            const musicFolderId = await getMusicFolderId(accessToken);
+            if (!musicFolderId) {
+                console.error("音楽フォルダが見つかりません。");
+                return;
+            }
+
+            const url = `https://graph.microsoft.com/v1.0/me/drive/items/${musicFolderId}/children`;
+            const response = await fetch(url, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            const data = await response.json();
+
+            console.log("音楽フォルダの内容:", data.value);
+            return data.value;
+        }
+    </script>
+</body>
+</html>
