@@ -34,25 +34,28 @@ class OneDriveAuth {
             const accounts = msalInstance.getAllAccounts();
             if (accounts.length > 0) {
                 this.currentAccount = accounts[0];
-                await this.validateAndRefreshToken();
+                await this.login();
             }
         }
     }
 
     async validateAndRefreshToken() {
-        try {
+        return new Promise(async (resolve, reject) => {
             await msalInstance.acquireTokenSilent({
                 scopes: ["Files.Read"],
                 account: this.currentAccount
+            }).then(() => {
+                resolve(true);
+            }).catch(error => {
+                if (error instanceof msal.InteractionRequiredAuthError) {
+                    console.warn('トークン更新エラー: 再ログインが必要です', error);
+                    reject(false);
+                } else {
+                    console.error('トークン更新エラー: ', error);
+                    reject(false);
+                }
             });
-            return true;
-        } catch (error) {
-            if (error instanceof msal.InteractionRequiredAuthError) {
-                console.error(error);
-                return false;
-            }
-            throw error;
-        }
+        });
     }
 
     async login() {
@@ -62,9 +65,14 @@ class OneDriveAuth {
         }
 
         if (this.currentAccount) {
-            const isValid = await this.validateAndRefreshToken();
-            if (isValid) {
-                return this.currentAccount;
+            try {
+                const isValid = await this.validateAndRefreshToken();
+                console.log('トークンの有効性:', isValid);
+                if (isValid) {
+                    return this.currentAccount;
+                }
+            } catch (err) {
+                console.error('ログインエラー:', err);
             }
         }
 
@@ -75,14 +83,7 @@ class OneDriveAuth {
                 if (response) {
                     console.log("リダイレクト完了:", response);
                     sessionStorage.removeItem("msalRedirectInProgress");
-                }
-
-                const accounts = msalInstance.getAllAccounts();
-                if (accounts.length > 0) {
-                    if (new Date(accounts[0].idTokenClaims.exp * 1000) > new Date()) {
-                        this.currentAccount = accounts[0];
-                        return this.currentAccount;
-                    }
+                    return;
                 }
 
                 // すでにリダイレクトを開始している場合は、再実行しない
@@ -91,11 +92,23 @@ class OneDriveAuth {
                     return;
                 }
 
+                const accounts = msalInstance.getAllAccounts();
+                if (accounts.length > 0) {
+                    console.log(accounts[0]);
+                    if (new Date(accounts[0].idTokenClaims.exp * 1000) > new Date()) {
+                    console.log('トークンの有効期限: ', new Date(accounts[0].idTokenClaims.exp * 1000));
+                        this.currentAccount = accounts[0];
+                        return this.currentAccount;
+                    }
+                }
+
                 // ログインが必要
                 alert('OneDriveへのログインが必要です。ログイン画面に移動します。');
                 sessionStorage.setItem('msalRedirectInProgress', "true"); // フラグをセット
+                console.log('ログインリダイレクト開始');
                 await msalInstance.loginRedirect({ scopes: ["Files.Read"] });
             } catch (error) {
+                sessionStorage.removeItem("msalRedirectInProgress");
                 console.error("ログインエラー:", error);
                 retryCount++;
                 if (retryCount === this.maxRetries) {

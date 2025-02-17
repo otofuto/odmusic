@@ -88,6 +88,8 @@ header h1::before {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+    touch-action: pan-y pinch-zoom;
+    transition: transform 0.3s ease;
 }
 
 .file-item:hover {

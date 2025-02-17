@@ -120,6 +120,46 @@ class App {
             const item = document.createElement('div');
             item.className = 'file-item';
             
+            // スワイプ用の変数を追加
+            let startX = 0;
+            let currentX = 0;
+            let isDragging = false;
+
+            // タッチイベントリスナーを追加
+            item.addEventListener('touchstart', (e) => {
+                startX = e.touches[0].clientX;
+                currentX = startX;
+                isDragging = true;
+                item.style.transition = 'none';
+            });
+
+            item.addEventListener('touchmove', (e) => {
+                if (!isDragging) return;
+                currentX = e.touches[0].clientX;
+                const diff = currentX - startX;
+                // 右から左へのスワイプのみ許可（diffが負の値）
+                if (diff < 0) {
+                    item.style.transform = `translateX(${diff}px)`;
+                }
+            });
+
+            item.addEventListener('touchend', async (e) => {
+                isDragging = false;
+                item.style.transition = 'transform 0.3s ease';
+                const diff = currentX - startX;
+                
+                // スワイプが-100px以上なら削除アクション
+                if (diff < -100) {
+                    const fileName = song.file_path.split('/').pop();
+                    await db.removeFromAlbum(this.currentAlbum.id, song.file_path);
+                    await this.loadAlbum(this.currentAlbum);
+                    this.showMessage(`${fileName}を削除しました`);
+                } else {
+                    // スワイプが不十分な場合は元の位置に戻す
+                    item.style.transform = 'translateX(0)';
+                }
+            });
+
             const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
             icon.setAttribute('viewBox', '0 0 24 24');
             icon.setAttribute('width', '24');
@@ -210,6 +250,43 @@ class App {
             const item = document.createElement('div');
             item.className = 'file-item';
             
+            // 音楽ファイルの場合のみスワイプ機能を追加
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (!file.folder && ['mp3', 'aac', 'm4a'].includes(ext)) {
+                let startX = 0;
+                let currentX = 0;
+                let isDragging = false;
+
+                item.addEventListener('touchstart', (e) => {
+                    startX = e.touches[0].clientX;
+                    currentX = startX;
+                    isDragging = true;
+                    item.style.transition = 'none';
+                });
+
+                item.addEventListener('touchmove', (e) => {
+                    if (!isDragging) return;
+                    currentX = e.touches[0].clientX;
+                    const diff = currentX - startX;
+                    if (diff < 0) {
+                        item.style.transform = `translateX(${diff}px)`;
+                    }
+                });
+
+                item.addEventListener('touchend', async (e) => {
+                    isDragging = false;
+                    item.style.transition = 'transform 0.3s ease';
+                    const diff = currentX - startX;
+                    
+                    if (diff < -100) {
+                        this.selectedFile = file;
+                        this.addToAlbumMode = true;
+                        this.showAlbumModal();
+                    }
+                    item.style.transform = 'translateX(0)';
+                });
+            }
+            
             const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
             icon.setAttribute('viewBox', '0 0 24 24');
             icon.setAttribute('width', '24');
@@ -221,7 +298,6 @@ class App {
                 icon.innerHTML = '<path fill="currentColor" d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z" />';
                 item.addEventListener('click', () => this.loadFolder(file.id, file.name));
             } else {
-                const ext = file.name.split('.').pop().toLowerCase();
                 if (['mp3', 'aac', 'm4a'].includes(ext)) {
                     if (isCurrentlyPlaying) {
                         icon.innerHTML = '<path fill="currentColor" d="M10,16.5V7.5L16,12M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z" />';
