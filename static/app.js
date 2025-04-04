@@ -376,12 +376,10 @@ class App {
         if (this.currentAlbum) {
             const songs = await db.getAlbumSongs(this.currentAlbum.id);
             await db.incrementAlbumUsage(this.currentAlbum.id);
-            const playlist = songs.map(song => ({
+            player.play(file, songs.map(song => ({
                 id: song.file_id,
-                name: song.file_path.split('/').pop(),
-                albumName: this.currentAlbum.name
-            }));
-            player.play(file, playlist);
+                name: song.file_path.split('/').pop()
+            })));
         } else {
             const files = await auth.listFiles(this.currentFolderId);
             const musicFiles = files.filter(f => 
@@ -390,10 +388,6 @@ class App {
                 if (new Date(a.fileSystemInfo.createdDateTime) < new Date(b.fileSystemInfo.createdDateTime))
                     return 1;
                 else return -1;
-            });
-            const folderName = this.currentPath.textContent || 'マイミュージック';
-            musicFiles.forEach(file => {
-                file.albumName = folderName;
             });
             player.play(file, musicFiles);
         }

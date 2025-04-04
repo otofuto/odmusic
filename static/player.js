@@ -1,13 +1,6 @@
 class MusicPlayer {
     constructor() {
-        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        this.source = null;
-        this.audioBuffer = null;
-        this.startTime = 0;
-        this.pausedAt = 0;
-        this.isPlaying = false;
-        this.duration = 0;
-
+        this.audio = document.getElementById('audioPlayer');
         this.playPauseButton = document.getElementById('playPause');
         this.loopModeButton = document.getElementById('loopMode');
         this.nextMusicButton = document.getElementById('nextMusic');
@@ -23,66 +16,11 @@ class MusicPlayer {
         this.currentFileId = null;
         this.isPreloading = false;
 
-        this.animationFrameId = null;
-
         this.setupEventListeners();
         this.stateChangeListeners = [];
-
-        this.setupMediaSession();
-
-        // iOS Safari での AudioContext の自動再開を設定
-        document.addEventListener('touchstart', () => {
-            if (this.audioContext && this.audioContext.state === 'suspended') {
-                this.audioContext.resume().catch(error => {
-                    console.warn('Failed to resume AudioContext after touch:', error);
-                });
-            }
-        }, { once: false, passive: true });
-
-        // 画面表示状態の変化を監視
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && 
-                this.audioContext && 
-                this.audioContext.state === 'suspended' && 
-                this.isPlaying) {
-                this.audioContext.resume().catch(error => {
-                    console.warn('Failed to resume AudioContext on visibilitychange:', error);
-                });
-            }
-        });
-
-        // 画面のフォーカス変更を監視
-        window.addEventListener('focus', () => {
-            if (this.audioContext && 
-                this.audioContext.state === 'suspended' && 
-                this.isPlaying) {
-                this.audioContext.resume().catch(error => {
-                    console.warn('Failed to resume AudioContext on window focus:', error);
-                });
-            }
-        });
     }
 
     async initialize() {
-        if ('mediaSession' in navigator) {
-            this.setupMediaSession();
-            this._mediaSessionInitialized = true;
-        }
-
-        if (this.audioContext.state === 'suspended') {
-            console.log('AudioContext is suspended. Will resume on user interaction.');
-        }
-
-        // iOS での自動再生ポリシーに対応するため、無音のバッファを作成して再生
-        try {
-            const silentBuffer = this.audioContext.createBuffer(1, 1, 22050);
-            const source = this.audioContext.createBufferSource();
-            source.buffer = silentBuffer;
-            source.connect(this.audioContext.destination);
-            source.start();
-        } catch (e) {
-            console.log('Silent buffer initialization failed:', e);
-        }
     }
 
     setupEventListeners() {
@@ -90,88 +28,22 @@ class MusicPlayer {
         this.loopModeButton.addEventListener('click', () => this.toggleLoopMode());
         this.nextMusicButton.addEventListener('click', () => this.handleTrackEnd());
 
+        this.audio.addEventListener('ended', () => this.handleTrackEnd());
+        this.audio.addEventListener('error', (e) => this.handleError(e));
+        this.audio.addEventListener('play', () => this.updatePlayPauseButton());
+        this.audio.addEventListener('pause', () => this.updatePlayPauseButton());
+        this.audio.addEventListener('timeupdate', () => {
+            this.updateProgress();
+            this.checkPreloadNext();
+        });
+        this.audio.addEventListener('loadstart', () => this.showLoading());
+        this.audio.addEventListener('canplay', () => this.hideLoading());
+
         this.progressBar.addEventListener('click', (e) => {
             const rect = this.progressBar.getBoundingClientRect();
             const pos = (e.clientX - rect.left) / rect.width;
             this.seek(pos * this.duration);
         });
-    }
-
-    setupMediaSession() {
-        if (!('mediaSession' in navigator) || this._mediaSessionInitialized) return;
-        this._mediaSessionInitialized = true;
-
-        if (!('mediaSession' in navigator)) return;
-
-        try {
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible' && 
-                    this.audioContext && 
-                    this.audioContext.state === 'suspended' && 
-                    this.isPlaying) {
-                    this.audioContext.resume().catch(err => console.error('Failed to resume audio context:', err));
-                }
-            });
-
-            navigator.mediaSession.setActionHandler('play', () => {
-                if (!this.isPlaying && this.audioBuffer) {
-                    // AudioContextがサスペンド状態なら再開
-                    if (this.audioContext.state === 'suspended') {
-                        this.audioContext.resume().then(() => {
-                            this.togglePlayPause();
-                        }).catch(err => console.error('Failed to resume audio context:', err));
-                    } else {
-                        this.togglePlayPause();
-                    }
-                }
-            });
-    
-            navigator.mediaSession.setActionHandler('pause', () => {
-                if (this.isPlaying) {
-                    this.togglePlayPause();
-                }
-            });
-    
-            navigator.mediaSession.setActionHandler('previoustrack', () => {
-                this.playPreviousTrack();
-            });
-    
-            navigator.mediaSession.setActionHandler('nexttrack', () => {
-                this.handleTrackEnd();
-            });
-    
-            navigator.mediaSession.setActionHandler('seekto', (details) => {
-                if (details.seekTime !== undefined && this.audioBuffer) {
-                    this.seek(details.seekTime);
-                }
-            });
-    
-            navigator.mediaSession.setActionHandler('seekbackward', (details) => {
-                const skipTime = details.seekOffset || 10;
-                if (this.audioBuffer) {
-                    let currentTime;
-                    if (this.isPlaying) {
-                        currentTime = this.audioContext.currentTime - this.startTime + this.pausedAt;
-                    } else {
-                        currentTime = this.pausedAt;
-                    }
-                    this.seek(Math.max(0, currentTime - skipTime));
-                }
-            });
-    
-            navigator.mediaSession.setActionHandler('seekforward', (details) => {
-                const skipTime = details.seekOffset || 10;
-                if (this.audioBuffer) {
-                    let currentTime;
-                    if (this.isPlaying) {
-                        currentTime = this.audioContext.currentTime - this.startTime + this.pausedAt;
-                    } else {
-                        currentTime = this.pausedAt;
-                    }
-                    this.seek(Math.min(this.duration, currentTime + skipTime));
-                }
-            });
-        } catch {}
     }
 
     showLoading() {
@@ -183,43 +55,14 @@ class MusicPlayer {
     }
 
     updateProgress() {
-        if (this.duration) {
-            let currentTime;
-            if (this.isPlaying) {
-                currentTime = this.audioContext.currentTime - this.startTime + this.pausedAt;
-            } else {
-                currentTime = this.pausedAt;
-            }
-
-            if (currentTime > this.duration) {
-                currentTime = this.duration;
-            }
-
-            const progress = (currentTime / this.duration) * 100;
+        if (this.audio.duration) {
+            const progress = (this.audio.currentTime / this.audio.duration) * 100;
             this.progressBarFill.style.width = `${progress}%`;
 
-            if ('mediaSession' in navigator && (!this._lastPositionUpdate || Date.now() - this._lastPositionUpdate > 1000)) {
-                navigator.mediaSession.setPositionState({
-                    duration: this.duration,
-                    playbackRate: 1.0,
-                    position: currentTime
-                });
-                this._lastPositionUpdate = Date.now();
-            }
-
-            if (this.isPlaying && currentTime >= this.duration) {
-                this.handleTrackEnd();
-                return;
-            }
-
-            const timeRemaining = this.duration - currentTime;
+            const timeRemaining = this.audio.duration - this.audio.currentTime;
             if (timeRemaining <= 10 && !this.isPreloading) {
                 this.preloadNextTrack();
             }
-        }
-
-        if (this.isPlaying) {
-            this.animationFrameId = requestAnimationFrame(() => this.updateProgress());
         }
     }
 
@@ -231,8 +74,6 @@ class MusicPlayer {
             this.currentPlaylist = [file];
             this.currentIndex = 0;
         }
-
-        this.pausedAt = 0;
 
         this.currentFileId = file.id;
         await this.loadAndPlayFile(file);
@@ -249,86 +90,21 @@ class MusicPlayer {
                 musicData = await db.getMusic(file.id);
             }
 
-            const arrayBuffer = await musicData.blob.arrayBuffer();
-
-            if (this.audioContext.state === 'suspended') {
-                try {
-                    await this.audioContext.resume();
-                } catch (err) {
-                    console.warn('Failed to resume AudioContext:', err);
-                }
-            }
-
-            this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-            this.duration = this.audioBuffer.duration;
-
-            this.startPlayback();
-
-            document.title = file.name.substring(0, file.name.lastIndexOf('.')) + ' - ODMusic';            
+            const url = URL.createObjectURL(musicData.blob);
+            this.audio.src = url;
+            this.audio.play();
+            document.title = file.name.substring(0, file.name.lastIndexOf('.')) + ' - ODMusic';
+            
             this.currentTrackElement.textContent = file.name.substring(0, file.name.lastIndexOf('.'));
             this.playerElement.hidden = false;
             this.currentFileId = file.id;
             this.updatePlayPauseButton();
             this.isPreloading = false;
-            this.hideLoading();
-
-            let albumName = 'マイミュージック';
-            if (this.currentPlaylist.length > 0 && this.currentPlaylist[0].albumName) {
-                albumName = this.currentPlaylist[0].albumName;
-            }
-
-            if ('mediaSession' in navigator && !this._mediaSessionInitialized) {
-                this.setupMediaSession();
-                this._mediaSessionInitialized = true;
-            }
-
-            this.updateMediaSessionMetadata(file);
 
             this.notifyStateChange();
         } catch (error) {
             console.error('Error playing file:', error);
             this.hideLoading();
-        }
-    }
-
-    startPlayback() {
-        if (this.source) {
-            this.source.stop();
-            this.source = null;
-        }
-
-        this.source = this.audioContext.createBufferSource();
-        this.source.buffer = this.audioBuffer;
-        this.source.connect(this.audioContext.destination);
-
-        this.source.loop = (this.loopMode === 'single');
-
-        this.startTime = this.audioContext.currentTime;
-
-        this.source.start(0, this.pausedAt);
-        this.isPlaying = true;
-
-        this.updateMediaSessionPlaybackState();
-
-        this.updateProgress();
-    }
-
-    seek(time) {
-        if (!this.audioBuffer) return;
-
-        const wasPlaying = this.isPlaying;
-
-        if (this.source) {
-            this.source.stop();
-            this.source = null;
-        }
-
-        this.pausedAt = Math.max(0, Math.min(time, this.duration));
-
-        if (wasPlaying) {
-            this.startPlayback();
-        } else {
-            this.updateProgress();
         }
     }
 
@@ -368,27 +144,12 @@ class MusicPlayer {
     }
 
     togglePlayPause() {
-        if (!this.audioBuffer) return;
-
-        if (this.isPlaying) {
-            if (this.source) {
-                const currentTime = this.audioContext.currentTime - this.startTime + this.pausedAt;
-                this.pausedAt = Math.min(currentTime, this.duration);
-                this.source.stop();
-                this.source = null;
-            }
-            this.isPlaying = false;
-
-            if (this.animationFrameId) {
-                cancelAnimationFrame(this.animationFrameId);
-                this.animationFrameId = null;
-            }
+        if (this.audio.paused) {
+            this.audio.play();
         } else {
-            this.startPlayback();
+            this.audio.pause();
         }
-
         this.updatePlayPauseButton();
-        this.updateMediaSessionPlaybackState();
         this.notifyStateChange();
     }
 
@@ -412,14 +173,11 @@ class MusicPlayer {
         };
         
         this.loopModeButton.querySelector('svg path').setAttribute('d', icons[this.loopMode]);
-
-        if (this.source) {
-            this.source.loop = (this.loopMode === 'single');
-        }
     }
 
     async handleTrackEnd() {
         if (this.loopMode === 'single') {
+            this.audio.play();
             return;
         }
 
@@ -429,29 +187,8 @@ class MusicPlayer {
             if (this.loopMode === 'all') {
                 nextIndex = 0;
             } else {
-                if (this.source) {
-                    this.source.stop();
-                    this.source = null;
-                }
-                this.isPlaying = false;
-                this.pausedAt = 0;
-                this.updatePlayPauseButton();
-                this.updateMediaSessionPlaybackState();
-
-                if (this.animationFrameId) {
-                    cancelAnimationFrame(this.animationFrameId);
-                    this.animationFrameId = null;
-                }
                 return;
             }
-        }
-
-        this.isPlaying = false;
-        this.pausedAt = 0;
-
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
         }
 
         this.currentIndex = nextIndex;
@@ -472,62 +209,8 @@ class MusicPlayer {
 
     notifyStateChange() {
         for (const callback of this.stateChangeListeners) {
-            callback(this.currentFileId, this.isPlaying);
+            callback(this.currentFileId, !this.audio.paused);
         }
-    }
-
-    updateMediaSessionMetadata(file) {
-        if ('mediaSession' in navigator) {
-            const trackTitle = file.name.substring(0, file.name.lastIndexOf('.'));
-
-            const baseUrl = window.location.origin;
-
-            navigator.mediaSession.metadata = new MediaMetadata({
-                title: trackTitle,
-                artist: 'ODMusic',
-                album: albumName || 'マイミュージック',
-                artwork: [
-                    { src: `${baseUrl}/icon/icon-192.png`, sizes: '192x192', type: 'image/png' },
-                    { src: `${baseUrl}/icon/icon-512.png`, sizes: '512x512', type: 'image/png' }
-                ]
-            });
-        }
-    }
-
-    updateMediaSessionPlaybackState() {
-        if ('mediaSession' in navigator) {
-            navigator.mediaSession.playbackState = this.isPlaying ? 'playing' : 'paused';
-        }
-    }
-
-    async playPreviousTrack() {
-        if (this.currentPlaylist.length <= 1) {
-            // プレイリストに1曲しかない場合は最初から再生
-            this.seek(0);
-            return;
-        }
-    
-        let prevIndex = this.currentIndex - 1;
-        if (prevIndex < 0) {
-            if (this.loopMode === 'all') {
-                prevIndex = this.currentPlaylist.length - 1;
-            } else {
-                // ループモードがない場合は最初から再生
-                this.seek(0);
-                return;
-            }
-        }
-    
-        this.isPlaying = false;
-        this.pausedAt = 0;
-    
-        if (this.animationFrameId) {
-            cancelAnimationFrame(this.animationFrameId);
-            this.animationFrameId = null;
-        }
-    
-        this.currentIndex = prevIndex;
-        await this.loadAndPlayFile(this.currentPlaylist[this.currentIndex]);
     }
 }
 
