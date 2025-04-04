@@ -57,6 +57,8 @@ class App {
             this.currentPlayingFileId = isPlaying ? fileId : null;
             this.updatePlayingIcon();
         });
+
+        await player.initialize();
     }
 
     updatePlayingIcon() {
@@ -374,10 +376,12 @@ class App {
         if (this.currentAlbum) {
             const songs = await db.getAlbumSongs(this.currentAlbum.id);
             await db.incrementAlbumUsage(this.currentAlbum.id);
-            player.play(file, songs.map(song => ({
+            const playlist = songs.map(song => ({
                 id: song.file_id,
-                name: song.file_path.split('/').pop()
-            })));
+                name: song.file_path.split('/').pop(),
+                albumName: this.currentAlbum.name
+            }));
+            player.play(file, playlist);
         } else {
             const files = await auth.listFiles(this.currentFolderId);
             const musicFiles = files.filter(f => 
@@ -386,6 +390,10 @@ class App {
                 if (new Date(a.fileSystemInfo.createdDateTime) < new Date(b.fileSystemInfo.createdDateTime))
                     return 1;
                 else return -1;
+            });
+            const folderName = this.currentPath.textContent || 'マイミュージック';
+            musicFiles.forEach(file => {
+                file.albumName = folderName;
             });
             player.play(file, musicFiles);
         }
