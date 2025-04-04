@@ -1,6 +1,13 @@
 class MusicPlayer {
     constructor() {
-        this.audio = document.getElementById('audioPlayer');
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        this.source = null;
+        this.audioBuffer = null;
+        this.startTime = 0;
+        this.pausedAt = 0;
+        this.isPlaying = false;
+        this.duration = 0;
+
         this.playPauseButton = document.getElementById('playPause');
         this.loopModeButton = document.getElementById('loopMode');
         this.nextMusicButton = document.getElementById('nextMusic');
@@ -16,6 +23,8 @@ class MusicPlayer {
         this.currentFileId = null;
         this.isPreloading = false;
 
+        this.animationFrameId = null;
+
         this.setupEventListeners();
     }
 
@@ -23,17 +32,6 @@ class MusicPlayer {
         this.playPauseButton.addEventListener('click', () => this.togglePlayPause());
         this.loopModeButton.addEventListener('click', () => this.toggleLoopMode());
         this.nextMusicButton.addEventListener('click', () => this.handleTrackEnd());
-        
-        this.audio.addEventListener('ended', () => this.handleTrackEnd());
-        this.audio.addEventListener('error', (e) => this.handleError(e));
-        this.audio.addEventListener('play', () => this.updatePlayPauseButton());
-        this.audio.addEventListener('pause', () => this.updatePlayPauseButton());
-        this.audio.addEventListener('timeupdate', () => {
-            this.updateProgress();
-            this.checkPreloadNext();
-        });
-        this.audio.addEventListener('loadstart', () => this.showLoading());
-        this.audio.addEventListener('canplay', () => this.hideLoading());
 
         this.progressBar.addEventListener('click', (e) => {
             const rect = this.progressBar.getBoundingClientRect();
@@ -51,9 +49,34 @@ class MusicPlayer {
     }
 
     updateProgress() {
-        if (this.audio.duration) {
-            const progress = (this.audio.currentTime / this.audio.duration) * 100;
+        if (this.duration) {
+            let currentTime;
+            if (this.isPlaying) {
+                currentTime = this.audioContext.currentTime - this.startTime + this.pausedAt;
+            } else {
+                currentTime = this.pausedAt;
+            }
+
+            if (currentTime > this.duration) {
+                currentTime = this.duration;
+            }
+
+            const progress = (currentTime / this.duration) * 100;
             this.progressBarFill.style.width = `${progress}%`;
+
+            if (this.isPlaying && currentTime >= this.duration) {
+                this.handleTrackEnd();
+                return;
+            }
+
+            const timeRemaining = this.duration - currentTime;
+            if (timeRemaining <= 10 && !this.isPreloading) {
+                this.preloadNextTrack();
+            }
+        }
+
+        if (this.isPlaying) {
+            this.animationFrameId = requestAnimationFrame(() => this.updateProgress());
         }
     }
 
@@ -81,11 +104,14 @@ class MusicPlayer {
                 musicData = await db.getMusic(file.id);
             }
 
-            const url = URL.createObjectURL(musicData.blob);
-            this.audio.src = url;
-            this.audio.play();
-            document.title = file.name.substring(0, file.name.lastIndexOf('.')) + ' - ODMusic';
-            
+            const arrayBuffer = await musicData.blob.arrayBuffer();
+
+            this.audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+            this.duration = this.audioBuffer.duration;
+
+            this.startPlayback();
+
+            document.title = file.name.substring(0, file.name.lastIndexOf('.')) + ' - ODMusic';            
             this.currentTrackElement.textContent = file.name.substring(0, file.name.lastIndexOf('.'));
             this.playerElement.hidden = false;
             this.currentFileId = file.id;
@@ -94,6 +120,45 @@ class MusicPlayer {
         } catch (error) {
             console.error('Error playing file:', error);
             this.hideLoading();
+        }
+    }
+
+    startPlayback() {
+        if (this.source) {
+            this.source.stop();
+            this.source = null;
+        }
+
+        this.source = this.audioContext.createBufferSource();
+        this.source.buffer = this.audioBuffer;
+        this.source.connect(this.audioContext.destination);
+
+        this.source.loop = (this.loopMode === 'single');
+
+        this.startTime = this.audioContext.currentTime;
+
+        this.source.start(0, this.pausedAt);
+        this.isPlaying = true;
+
+        this.updateProgress();
+    }
+
+    seek(time) {
+        if (!this.audioBuffer) return;
+
+        const wasPlaying = this.isPlaying;
+
+        if (this.source) {
+            this.source.stop();
+            this.source = null;
+        }
+
+        this.pausedAt = Math.max(0, Math.min(time, this.duration));
+
+        if (wasPlaying) {
+            this.startPlayback();
+        } else {
+            this.updateProgress();
         }
     }
 
@@ -113,7 +178,7 @@ class MusicPlayer {
 
         const nextFile = this.currentPlaylist[nextIndex];
         if (!nextFile) {
-            return;
+            nextFile = this.currentPlaylist[0];
         }
 
         try {
@@ -132,28 +197,31 @@ class MusicPlayer {
         }
     }
 
-    checkPreloadNext() {
-        if (!this.audio.duration) {
-            return;
-        }
-
-        const timeRemaining = this.audio.duration - this.audio.currentTime;
-        if (timeRemaining <= 10 && !this.isPreloading) {
-            this.preloadNextTrack();
-        }
-    }
-
     togglePlayPause() {
-        if (this.audio.paused) {
-            this.audio.play();
+        if (!this.audioBuffer) return;
+
+        if (this.isPlaying) {
+            if (this.source) {
+                const currentTime = this.audioContext.currentTime - this.startTime + this.pausedAt;
+                this.pausedAt = Math.min(currentTime, this.duration);
+                this.source.stop();
+                this.source = null;
+            }
+            this.isPlaying = false;
+
+            if (this.animationFrameId) {
+                cancelAnimationFrame(this.animationFrameId);
+                this.animationFrameId = null;
+            }
         } else {
-            this.audio.pause();
+            this.startPlayback();
         }
+
         this.updatePlayPauseButton();
     }
 
     updatePlayPauseButton() {
-        const icon = this.audio.paused ? 
+        const icon = !this.isPlaying ? 
             '<path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z"/>' :
             '<path fill="currentColor" d="M14,19H18V5H14M6,19H10V5H6V19Z"/>';
         
@@ -172,27 +240,49 @@ class MusicPlayer {
         };
         
         this.loopModeButton.querySelector('svg path').setAttribute('d', icons[this.loopMode]);
+
+        if (this.source) {
+            this.source.loop = (this.loopMode === 'single');
+        }
     }
 
     async handleTrackEnd() {
         if (this.loopMode === 'single') {
-            this.audio.play();
             return;
         }
 
-        if (this.loopMode === 'all' && this.currentIndex === this.currentPlaylist.length - 1) {
-            this.currentIndex = -1;
+        let nextIndex = this.currentIndex + 1;
+        
+        if (nextIndex >= this.currentPlaylist.length) {
+            if (this.loopMode === 'all') {
+                nextIndex = 0;
+            } else {
+                if (this.source) {
+                    this.source.stop();
+                    this.source = null;
+                }
+                this.isPlaying = false;
+                this.pausedAt = 0;
+                this.updatePlayPauseButton();
+
+                if (this.animationFrameId) {
+                    cancelAnimationFrame(thia.animationFrameId);
+                    this.animationFrameId = null;
+                }
+                return;
+            }
         }
 
-        if (this.currentIndex < this.currentPlaylist.length - 1) {
-            this.currentIndex++;
-            await this.loadAndPlayFile(this.currentPlaylist[this.currentIndex]);
-        }
-    }
+        this.isPlaying = false;
+        this.pausedAt = 0;
 
-    handleError(error) {
-        console.error('Audio playback error:', error);
-        this.hideLoading();
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        this.currentIndex = nextIndex;
+        await this.loadAndPlayFile(this.currentPlaylist[this.currentIndex]);
     }
 
     getCurrentFileId() {

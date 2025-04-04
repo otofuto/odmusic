@@ -58,66 +58,88 @@ class OneDriveAuth {
         });
     }
 
-    async login() {
+    async login(important = false) {
         if (!this.isLocalhost) {
             console.log('開発環境ではOneDriveのログインはスキップされます');
             return null;
         }
-
-        if (this.currentAccount) {
-            try {
-                const isValid = await this.validateAndRefreshToken();
-                console.log('トークンの有効性:', isValid);
-                if (isValid) {
+    
+        try {
+            // 1️⃣ まずリダイレクト後のレスポンスを処理
+            const response = await msalInstance.handleRedirectPromise();
+            if (response) {
+                console.log("リダイレクト完了:", response);
+                sessionStorage.removeItem("msalRedirectInProgress"); // フラグリセット
+                this.currentAccount = response.account;
+                return this.currentAccount;
+            }
+        } catch (error) {
+            console.error("リダイレクト処理エラー:", error);
+            sessionStorage.removeItem("msalRedirectInProgress"); // エラー時もリセット
+        }
+    
+        // 2️⃣ すでにリダイレクト処理中なら処理を止める
+        if (sessionStorage.getItem('msalRedirectInProgress') === "true") {
+            console.log("すでにリダイレクト処理中...");
+            let ars = ~~sessionStorage.getItem('alreadyRedirectStarted');
+            ars++;
+            if (ars >= 2) {
+                ars = 0;
+                sessionStorage.removeItem("msalRedirectInProgress");
+            }
+            sessionStorage.setItem('alreadyRedirectStarted', ars);
+            return;
+        }
+    
+        // 3️⃣ 既存のログイン状態をチェック
+        if (!important) {
+            const accounts = msalInstance.getAllAccounts();
+            if (accounts.length > 0) {
+                console.log("既存アカウント:", accounts[0]);
+        
+                const expirationTime = (accounts[0].idTokenClaims?.exp || 0) * 1000;
+                if (expirationTime > Date.now()) {
+                    console.log('トークン有効期限:', new Date(expirationTime));
+                    this.currentAccount = accounts[0];
                     return this.currentAccount;
                 }
-            } catch (err) {
-                console.error('ログインエラー:', err);
             }
         }
-
-        let retryCount = 0;
-        while (retryCount < this.maxRetries) {
-            try {
-                const response = await msalInstance.handleRedirectPromise();
-                if (response) {
-                    console.log("リダイレクト完了:", response);
-                    sessionStorage.removeItem("msalRedirectInProgress");
-                    return;
-                }
-
-                // すでにリダイレクトを開始している場合は、再実行しない
-                if (sessionStorage.getItem('msalRedirectInProgress') === "true") {
-                    console.log("すでにリダイレクト処理中...");
-                    return;
-                }
-
-                const accounts = msalInstance.getAllAccounts();
-                if (accounts.length > 0) {
-                    console.log(accounts[0]);
-                    if (new Date(accounts[0].idTokenClaims.exp * 1000) > new Date()) {
-                    console.log('トークンの有効期限: ', new Date(accounts[0].idTokenClaims.exp * 1000));
-                        this.currentAccount = accounts[0];
-                        return this.currentAccount;
-                    }
-                }
-
-                // ログインが必要
-                alert('OneDriveへのログインが必要です。ログイン画面に移動します。');
-                sessionStorage.setItem('msalRedirectInProgress', "true"); // フラグをセット
-                console.log('ログインリダイレクト開始');
-                await msalInstance.loginRedirect({ scopes: ["Files.Read"] });
-            } catch (error) {
-                sessionStorage.removeItem("msalRedirectInProgress");
-                console.error("ログインエラー:", error);
-                retryCount++;
-                if (retryCount === this.maxRetries) {
-                    alert('ログインに失敗しました。ページを再読み込みして再度お試しください。');
-                    throw error;
-                }
+    
+        // 4️⃣ ポップアップでログイン試行
+        try {
+            console.log("ポップアップログインを試行...");
+            const popupResponse = await msalInstance.loginPopup({ scopes: ["Files.Read"] });
+            console.log("ポップアップログイン成功:", popupResponse);
+            this.currentAccount = popupResponse.account;
+            return;
+        } catch (popupError) {
+            console.error("ポップアップログイン失敗:", popupError);
+            const knownErrors = [
+                "popup_blocked_by_browser",
+                "interaction_required",
+                "login_required"
+            ];
+            if (knownErrors.includes(popupError.errorCode)) {
+                console.log("ポップアップがブロックまたは無効。リダイレクトへ切り替えます...");
+            } else {
+                console.log("予期しないエラー。リダイレクトログインを試みます...");
             }
+        }
+    
+        // 5️⃣ リダイレクトログイン
+        try {
+            alert('OneDriveへのログインが必要です。ログイン画面に移動します。');
+            sessionStorage.setItem('msalRedirectInProgress', "true");
+            console.log("ログインリダイレクト開始");
+            msalInstance.loginRedirect({ scopes: ["Files.Read"] }); // await 不要
+        } catch {
+            sessionStorage.removeItem("msalRedirectInProgress");
+            alert('ログイン処理に失敗しました。時間をおいてお試しください。');
         }
     }
+    
+    
 
     async getAccessToken() {
         if (!this.isLocalhost) {
@@ -130,6 +152,7 @@ class OneDriveAuth {
         }
 
         if (!this.currentAccount) {
+            alert('ログインに失敗しました');
             throw new Error("ログインできませんでした。");
         }
 
@@ -141,8 +164,8 @@ class OneDriveAuth {
             return tokenResponse.accessToken;
         } catch (error) {
             if (error instanceof msal.InteractionRequiredAuthError) {
-                console.log("トークンの再取得が必要です");
-                await this.login();
+                console.log("トークンの再取得が必要です", error);
+                await this.login(true);
                 return this.getAccessToken();
             }
             console.error("トークン取得エラー:", error);

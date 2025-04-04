@@ -50,7 +50,10 @@ class App {
         this.backButton.addEventListener('click', () => this.navigateBack());
         this.albumButton.addEventListener('click', () => this.showAlbumModal());
         this.createAlbumButton.addEventListener('click', () => this.createAlbum());
-        this.headerTitle.addEventListener('click', () => this.moveToMusicFolder());
+        this.headerTitle.addEventListener('click', () =>  {
+            sessionStorage.removeItem("msalRedirectInProgress");
+            this.moveToMusicFolder();
+        });
         
         // 閉じるボタンのイベントリスナーを修正
         const closeButton = this.albumModal.querySelector('.close-button');

@@ -102,6 +102,22 @@
             <audio id="audioPlayer"></audio>
         </footer>
     </div>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register("sw.js")
+            .then(reg => {
+                console.log('Service worker registered.', reg);
+                reg.onupdatefound = function() {
+                    reg.update();
+                    console.log('cash update.');
+                }
+                if (typeof reg.update == 'function') {
+                    console.log('cash update.');
+                    reg.update();
+                }
+            });
+        } else console.log('Service worker can\'t registered.');
+    </script>
     <script src="db.js"></script>
     <script src="auth.js"></script>
     <script src="player.js"></script>
