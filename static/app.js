@@ -10,9 +10,13 @@ class App {
         this.backButton = document.getElementById('backButton');
         this.currentPath = document.getElementById('currentPath');
         this.albumButton = document.getElementById('albumButton');
+        this.searchButton = document.getElementById('searchButton');
         this.albumModal = document.getElementById('albumModal');
+        this.searchModal = document.getElementById('searchModal');
+        this.searchWord = document.getElementById('searchWord');
         this.newAlbumName = document.getElementById('newAlbumName');
         this.createAlbumButton = document.getElementById('createAlbum');
+        this.searchMusicButton = document.getElementById('searchMusic');
         this.albumList = document.getElementById('albumList');
         this.confirmDeleteModal = document.getElementById('confirmDeleteModal');
         this.confirmDeleteMessage = document.getElementById('confirmDeleteMessage');
@@ -23,9 +27,13 @@ class App {
         // モーダルを初期状態で非表示にする
         this.albumModal.hidden = true;
         this.albumModal.style.display = 'none';
+        this.searchModal.hidden = true;
+        this.searchModal.style.display = 'none';
         
         this.setupEventListeners();
         this.setupConfirmDeleteModalListeners();
+
+        this.currentPlayingFileId = null;
     }
 
     async initialize() {
@@ -44,20 +52,47 @@ class App {
         }
 
         await db.cleanupOldMusic();
+
+        player.addStateChangeListener((fileId, isPlaying) => {
+            this.currentPlayingFileId = isPlaying ? fileId : null;
+            this.updatePlayingIcon();
+        });
+    }
+
+    updatePlayingIcon() {
+        const fileItems = this.fileList.querySelectorAll('.file-item');
+
+        fileItems.forEach(item => {
+            const fileId = item.getAttribute('data-file-id');
+            if (!fileId) return;
+
+            const iconSvg = item.querySelector('svg');
+            if (!iconSvg) return;
+
+            if (fileId === this.currentPlayingFileId) {
+                iconSvg.innerHTML = '<path fill="currentColor" d="M10,16.5V7.5L16,12M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z" />';
+            } else {
+                iconSvg.innerHTML = '<path fill="currentColor" d="M21,3V15.5A3.5,3.5 0 0,1 17.5,19A3.5,3.5 0 0,1 14,15.5A3.5,3.5 0 0,1 17.5,12C18.04,12 18.55,12.12 19,12.34V6.47L9,8.6V17.5A3.5,3.5 0 0,1 5.5,21A3.5,3.5 0 0,1 2,17.5A3.5,3.5 0 0,1 5.5,14C6.04,14 6.55,14.12 7,14.34V6L21,3Z" />';
+            }
+        });
     }
 
     setupEventListeners() {
         this.backButton.addEventListener('click', () => this.navigateBack());
+        this.searchButton.addEventListener('click', () => this.showSearchModal());
+        this.searchWord.addEventListener('keydown', e => this.searchWordKeydown(e));
+        this.searchMusicButton.addEventListener('click', () => this.searchMusic());
         this.albumButton.addEventListener('click', () => this.showAlbumModal());
         this.createAlbumButton.addEventListener('click', () => this.createAlbum());
         this.headerTitle.addEventListener('click', () =>  {
             sessionStorage.removeItem("msalRedirectInProgress");
             this.moveToMusicFolder();
         });
-        
-        // 閉じるボタンのイベントリスナーを修正
-        const closeButton = this.albumModal.querySelector('.close-button');
+
+        let closeButton = this.albumModal.querySelector('.close-button');
         closeButton.addEventListener('click', () => this.hideAlbumModal());
+        closeButton = this.searchModal.querySelector('.close-button');
+        closeButton.addEventListener('click', () => this.hideSearchModal());
     }
 
     setupConfirmDeleteModalListeners() {
@@ -122,6 +157,7 @@ class App {
         songs.forEach(song => {
             const item = document.createElement('div');
             item.className = 'file-item';
+            item.setAttribute('data-file-id', song.file_id);
             
             // スワイプ用の変数を追加
             let startX = 0;
@@ -167,13 +203,20 @@ class App {
             icon.setAttribute('viewBox', '0 0 24 24');
             icon.setAttribute('width', '24');
             icon.setAttribute('height', '24');
-            
-            icon.innerHTML = '<path fill="currentColor" d="M21,3V15.5A3.5,3.5 0 0,1 17.5,19A3.5,3.5 0 0,1 14,15.5A3.5,3.5 0 0,1 17.5,12C18.04,12 18.55,12.12 19,12.34V6.47L9,8.6V17.5A3.5,3.5 0 0,1 5.5,21A3.5,3.5 0 0,1 2,17.5A3.5,3.5 0 0,1 5.5,14C6.04,14 6.55,14.12 7,14.34V6L21,3Z" />';
-            
+
+            const isCurrentlyPlaying = song.file_id === this.currentPlayingFileId;
+
+            if (isCurrentlyPlaying) {
+                icon.innerHTML = '<path fill="currentColor" d="M10,16.5V7.5L16,12M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z" />';
+            } else {
+                icon.innerHTML = '<path fill="currentColor" d="M21,3V15.5A3.5,3.5 0 0,1 17.5,19A3.5,3.5 0 0,1 14,15.5A3.5,3.5 0 0,1 17.5,12C18.04,12 18.55,12.12 19,12.34V6.47L9,8.6V17.5A3.5,3.5 0 0,1 5.5,21A3.5,3.5 0 0,1 2,17.5A3.5,3.5 0 0,1 5.5,14C6.04,14 6.55,14.12 7,14.34V6L21,3Z" />';
+            }
+
             const fileName = song.file_path.split('/').pop();
             item.appendChild(icon);
             item.appendChild(document.createTextNode(fileName));
-            
+            item.setAttribute('data-name', fileName);
+
             item.addEventListener('click', () => {
                 const file = {
                     id: song.file_id,
@@ -181,7 +224,7 @@ class App {
                 };
                 this.playFile(file);
             });
-            
+
             item.addEventListener('contextmenu', e => {
                 e.preventDefault();
                 this.showConfirmDeleteModal(`アルバムから曲を削除しますか\n${fileName}`, async () => {
@@ -190,7 +233,7 @@ class App {
                     this.showMessage(`${fileName}を削除しました`);
                 });
             });
-            
+
             this.fileList.appendChild(item);
         });
     }
@@ -200,7 +243,7 @@ class App {
             const previousItem = this.pathStack.pop();
             this.currentFolderId = previousItem.id;
             this.currentPath.textContent = previousItem.name;
-            
+
             if (previousItem.isAlbum) {
                 this.loadAlbum(previousItem.album);
             } else {
@@ -213,7 +256,7 @@ class App {
                     this.currentFolderId = folder.id;
                     this.currentPath.textContent = folder.name;
                     //this.backButton.hidden = this.pathStack.length === 0;
-                        
+
                     this.showLoading();
                     auth.listFiles(this.currentFolderId).then(files => this.renderFileList(files));
                 }
@@ -252,10 +295,11 @@ class App {
         sortedFiles.forEach(file => {
             const item = document.createElement('div');
             item.className = 'file-item';
-            
+
             // 音楽ファイルの場合のみスワイプ機能を追加
             const ext = file.name.split('.').pop().toLowerCase();
             if (!file.folder && ['mp3', 'aac', 'm4a'].includes(ext)) {
+                item.setAttribute('data-file-id', file.id);
                 let startX = 0;
                 let currentX = 0;
                 let isDragging = false;
@@ -280,7 +324,7 @@ class App {
                     isDragging = false;
                     item.style.transition = 'transform 0.3s ease';
                     const diff = currentX - startX;
-                    
+
                     if (diff < -100) {
                         this.selectedFile = file;
                         this.addToAlbumMode = true;
@@ -289,14 +333,14 @@ class App {
                     item.style.transform = 'translateX(0)';
                 });
             }
-            
+
             const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
             icon.setAttribute('viewBox', '0 0 24 24');
             icon.setAttribute('width', '24');
             icon.setAttribute('height', '24');
-            
-            const isCurrentlyPlaying = file.id === player.getCurrentFileId();
-            
+
+            const isCurrentlyPlaying = file.id === this.currentPlayingFileId;
+
             if (file.folder) {
                 icon.innerHTML = '<path fill="currentColor" d="M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z" />';
                 item.addEventListener('click', () => this.loadFolder(file.id, file.name));
@@ -318,9 +362,10 @@ class App {
                     icon.innerHTML = '<path fill="currentColor" d="M13,9H18.5L13,3.5V9M6,2H14L20,8V20A2,2 0 0,1 18,22H6C4.89,22 4,21.1 4,20V4C4,2.89 4.89,2 6,2M15,18V16H6V18H15M18,14V12H6V14H18Z" />';
                 }
             }
-            
+
             item.appendChild(icon);
             item.appendChild(document.createTextNode(file.name));
+            item.setAttribute('data-name', file.name);
             this.fileList.appendChild(item);
         });
     }
@@ -346,10 +391,21 @@ class App {
         }
     }
 
+    showSearchModal() {
+        this.searchModal.hidden = false;
+        this.searchModal.style.display = 'flex';
+        this.searchWord.focus();
+    }
+
     showAlbumModal() {
         this.albumModal.hidden = false;
         this.albumModal.style.display = 'flex';
         this.refreshAlbumList();
+    }
+
+    hideSearchModal() {
+        this.searchModal.hidden = true;
+        this.searchModal.style.display = 'none';
     }
 
     hideAlbumModal() {
@@ -411,6 +467,29 @@ class App {
         });
     }
 
+    searchWordKeydown(e) {
+        if (e.code != 'Enter' && e.code != 'NumpadEnter') return;
+        if (e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        this.searchMusic();
+    }
+
+    searchMusic() {
+        const fileItems = this.fileList.querySelectorAll('.file-item');
+
+        let found = false;
+        fileItems.forEach(item => {
+            const view = item.getAttribute('data-name').toLowerCase().includes(this.searchWord.value.toLowerCase());
+            item.style.display = view ? 'flex' : 'none';
+            if (!found && view) found = true;
+        });
+        if (!found) {
+            this.showNotification('結果がありませんでした', 1000);
+        }
+
+        this.hideSearchModal();
+    }
+
     async createAlbum() {
         const name = this.newAlbumName.value.trim();
         if (name) {
@@ -452,6 +531,37 @@ class App {
     async moveToMusicFolder() {
         this.currentFolderId = await auth.getMusicFolderId();
         this.loadFolder(this.currentFolderId);
+    }
+
+    showNotification(message, timeout = 5000) {
+        const existingMsg = document.querySelector('.message');
+        if (existingMsg) document.body.removeChild(existingMsg);
+
+        const msg = document.createElement('div');
+        msg.className = 'message';
+
+        msg.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:8px">
+                <div>${message}</div>
+                <button style="align-self:center;background:var(--primary-color);color:white;border:none;border-radius:4px;padding:4px 12px;cursor:pointer">OK</button>
+            </div>
+        `;
+
+        let timerId;
+        const close = () => {
+            if (timerId) clearTimeout(timerId);
+            msg.classList.add('fade-out');
+            setTimeout(() => msg.parentNode && document.body.removeChild(msg), 300);
+        };
+        msg.querySelector('button').addEventListener('click', close);
+
+        document.body.appendChild(msg);
+        if (timeout > 0) timerId = setTimeout(close, timeout);
+    
+        return {
+            close,
+            updateMessage: text => msg.querySelector('div > div').textContent = text
+        };
     }
 }
 

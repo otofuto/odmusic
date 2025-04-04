@@ -200,7 +200,7 @@ header h1::before {
     border-radius: 4px;
 }
 
-#createAlbum {
+#createAlbum, #searchMusic {
     padding: 0.5rem 1rem;
     background: var(--primary-color);
     color: white;

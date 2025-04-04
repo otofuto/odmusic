@@ -12,7 +12,7 @@
     <meta name="twitter:description" property="og:description" content="OneDriveに保存した音楽を再生できるPWA">
     <meta name="twitter:image" property="og:image" content="https://odmusic.otft.info/icon/icon-512.png">
     <meta name="description" content="OneDriveに保存した音楽を再生できるPWA">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="white">
     <meta name="apple-mobile-web-app-title" content="ODMusic">
     <title>ODMusic</title>
@@ -27,6 +27,14 @@
     <div id="app">
         <header>
             <h1 id="headerTitle">ODMusic</h1>
+            <button id="searchButton" class="icon-button">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M10 10m-7 0a7 7 0 1 0 14 0a7 7 0 1 0 -14 0" />
+                    <path d="M21 21l-6 -6" />
+                </svg>
+                検索
+            </button>
             <button id="albumButton" class="icon-button">
                 <svg viewBox="0 0 24 24" width="24" height="24">
                     <path fill="currentColor" d="M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12,16.5C9.5,16.5 7.5,14.5 7.5,12C7.5,9.5 9.5,7.5 12,7.5C14.5,7.5 16.5,9.5 16.5,12C16.5,14.5 14.5,16.5 12,16.5M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/>
@@ -45,6 +53,21 @@
         </nav>
 
         <main id="fileList"></main>
+
+        <div id="searchModal" class="modal" hidden>
+            <div class="modal-content">
+                <header class="modal-header">
+                    <h2>曲名検索</h2>
+                    <button class="close-button">×</button>
+                </header>
+                <div class="modal-body">
+                    <div class="album-controls">
+                        <input type="search" id="searchWord" placeholder="検索ワード">
+                        <button id="searchMusic">検索</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div id="albumModal" class="modal" hidden>
             <div class="modal-content">

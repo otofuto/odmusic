@@ -26,6 +26,7 @@ class MusicPlayer {
         this.animationFrameId = null;
 
         this.setupEventListeners();
+        this.stateChangeListeners = [];
     }
 
     setupEventListeners() {
@@ -36,7 +37,7 @@ class MusicPlayer {
         this.progressBar.addEventListener('click', (e) => {
             const rect = this.progressBar.getBoundingClientRect();
             const pos = (e.clientX - rect.left) / rect.width;
-            this.audio.currentTime = this.audio.duration * pos;
+            this.seek(pos * this.duration);
         });
     }
 
@@ -89,6 +90,8 @@ class MusicPlayer {
             this.currentIndex = 0;
         }
 
+        this.pausedAt = 0;
+
         this.currentFileId = file.id;
         await this.loadAndPlayFile(file);
     }
@@ -117,6 +120,9 @@ class MusicPlayer {
             this.currentFileId = file.id;
             this.updatePlayPauseButton();
             this.isPreloading = false;
+            this.hideLoading();
+
+            this.notifyStateChange();
         } catch (error) {
             console.error('Error playing file:', error);
             this.hideLoading();
@@ -178,7 +184,7 @@ class MusicPlayer {
 
         const nextFile = this.currentPlaylist[nextIndex];
         if (!nextFile) {
-            nextFile = this.currentPlaylist[0];
+            return;
         }
 
         try {
@@ -218,6 +224,7 @@ class MusicPlayer {
         }
 
         this.updatePlayPauseButton();
+        this.notifyStateChange();
     }
 
     updatePlayPauseButton() {
@@ -266,7 +273,7 @@ class MusicPlayer {
                 this.updatePlayPauseButton();
 
                 if (this.animationFrameId) {
-                    cancelAnimationFrame(thia.animationFrameId);
+                    cancelAnimationFrame(this.animationFrameId);
                     this.animationFrameId = null;
                 }
                 return;
@@ -287,6 +294,20 @@ class MusicPlayer {
 
     getCurrentFileId() {
         return this.currentFileId;
+    }
+
+    addStateChangeListener(callback) {
+        this.stateChangeListeners.push(callback);
+    }
+
+    removeStateChangeListener(callback) {
+        this.stateChangeListeners = this.stateChangeListeners.filter(lis => lis !== callback);
+    }
+
+    notifyStateChange() {
+        for (const callback of this.stateChangeListeners) {
+            callback(this.currentFileId, this.isPlaying);
+        }
     }
 }
 

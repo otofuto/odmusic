@@ -20,16 +20,10 @@ class OneDriveAuth {
         this.currentPath = '/';
         this.pathStack = [];
         this.maxRetries = 3;
-        this.isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === 'odmusic.otft.info';
         this.currentAccount = null;
     }
 
     async initialize() {
-        if (!this.isLocalhost) {
-            console.log('開発環境ではOneDriveのログインはスキップされます');
-            return;
-        }
-        
         if (msalInstance) {
             const accounts = msalInstance.getAllAccounts();
             if (accounts.length > 0) {
@@ -59,11 +53,6 @@ class OneDriveAuth {
     }
 
     async login(important = false) {
-        if (!this.isLocalhost) {
-            console.log('開発環境ではOneDriveのログインはスキップされます');
-            return null;
-        }
-    
         try {
             // 1️⃣ まずリダイレクト後のレスポンスを処理
             const response = await msalInstance.handleRedirectPromise();
@@ -129,7 +118,7 @@ class OneDriveAuth {
     
         // 5️⃣ リダイレクトログイン
         try {
-            alert('OneDriveへのログインが必要です。ログイン画面に移動します。');
+            app.showNotification('OneDriveへのログインが必要です。ログイン画面に移動します。', 3000);
             sessionStorage.setItem('msalRedirectInProgress', "true");
             console.log("ログインリダイレクト開始");
             msalInstance.loginRedirect({ scopes: ["Files.Read"] }); // await 不要
@@ -142,11 +131,6 @@ class OneDriveAuth {
     
 
     async getAccessToken() {
-        if (!this.isLocalhost) {
-            console.log('開発環境ではOneDriveのログインはスキップされます');
-            return null;
-        }
-
         if (!this.currentAccount) {
             await this.login();
         }
@@ -174,11 +158,6 @@ class OneDriveAuth {
     }
 
     async getMusicFolderId() {
-        if (!this.isLocalhost) {
-            console.log('開発環境ではOneDriveのログインはスキップされます');
-            return null;
-        }
-
         const accessToken = await this.getAccessToken();
         const url = "https://graph.microsoft.com/v1.0/me/drive/root/children";
         const response = await fetch(url, {
@@ -191,11 +170,6 @@ class OneDriveAuth {
     }
 
     async listFiles(folderId) {
-        if (!this.isLocalhost) {
-            console.log('開発環境ではOneDriveのログインはスキップされます');
-            return [];
-        }
-
         const accessToken = await this.getAccessToken();
         let allFiles = [];
         let nextLink = `https://graph.microsoft.com/v1.0/me/drive/items/${folderId}/children?$top=999`;
@@ -218,11 +192,6 @@ class OneDriveAuth {
     }
 
     async getParentFolder(folderId) {
-        if (!this.isLocalhost) {
-            console.log('開発環境ではOneDriveのログインはスキップされます');
-            return null;
-        }
-
         const accessToken = await this.getAccessToken();
     
         const url = `https://graph.microsoft.com/v1.0/me/drive/items/${folderId}?$select=parentReference`;
@@ -244,11 +213,6 @@ class OneDriveAuth {
     }
 
     async downloadFile(fileId) {
-        if (!this.isLocalhost) {
-            console.log('開発環境ではOneDriveのログインはスキップされます');
-            return new Blob();
-        }
-
         const accessToken = await this.getAccessToken();
         const url = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/content`;
         const response = await fetch(url, {
