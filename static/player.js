@@ -203,6 +203,10 @@ class MusicPlayer {
         this.loadingIndicator.style.display = 'block';
     }
 
+    hideLoading() {
+        this.loadingIndicator.style.display = 'none';
+    }
+
     updateProgress() {
         if (this.audio.duration) {
             const progress = (this.audio.currentTime / this.audio.duration) * 100;
@@ -250,7 +254,7 @@ class MusicPlayer {
             let musicData = await db.getMusic(file.id);
             
             if (!musicData) {
-                const blob = await auth.downloadFile(file.id);
+                const blob = await auth.downloadFile(file);
                 await db.saveMusic(file.id, blob);
                 musicData = await db.getMusic(file.id);
             }
@@ -283,6 +287,8 @@ class MusicPlayer {
             this.updateMediaSessionMetadata();
             
             this.notifyStateChange();
+
+            this.hideLoading();
         } catch (error) {
             console.error('ファイル再生エラー:', error);
             this.hideLoading();
@@ -314,7 +320,7 @@ class MusicPlayer {
             
             if (!musicData) {
                 console.log('次のトラックをプリロード中:', nextFile.name);
-                const blob = await auth.downloadFile(nextFile.id);
+                const blob = await auth.downloadFile(nextFile);
                 await db.saveMusic(nextFile.id, blob);
             }
         } catch (error) {

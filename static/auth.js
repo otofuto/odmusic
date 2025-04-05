@@ -212,13 +212,18 @@ class OneDriveAuth {
         return data.parentReference ?? null;
     }
 
-    async downloadFile(fileId) {
+    async downloadFile(file) {
         const accessToken = await this.getAccessToken();
-        const url = `https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/content`;
+        const url = `https://graph.microsoft.com/v1.0/me/drive/items/${file.id}/content`;
         const response = await fetch(url, {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
-        return await response.blob();
+        let blob = await response.blob();
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext == 'aac') {
+            return new Blob([blob], { type: "audio/aac" });
+        }
+        return blob;
     }
 }
 
