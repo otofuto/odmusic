@@ -199,11 +199,24 @@ class MusicPlayer {
         }
     }
 
-    showLoading() {
-        this.loadingIndicator.style.display = 'block';
+    showLoading(fileId) {
+        const item = document.getElementById('fileList').querySelector(`[data-file-id="${fileId}"]`);
+        if (item) {
+            const cln = this.loadingIndicator.cloneNode(true);
+            cln.style.display = 'inline-block';
+            cln.id = null;
+            item.querySelector('svg').after(cln);
+        } else {
+            this.loadingIndicator.style.display = 'block';
+        }
     }
 
-    hideLoading() {
+    hideLoading(fileId) {
+        const item = document.getElementById('fileList').querySelector(`[data-file-id="${fileId}"]`);
+        if (item) {
+            const cln = item.querySelector('.loading-indicator');
+            if (cln) cln.remove();
+        }
         this.loadingIndicator.style.display = 'none';
     }
 
@@ -245,12 +258,12 @@ class MusicPlayer {
     async loadAndPlayFile(file) {
         if (!file || !file.id) {
             console.error('無効なファイル情報です', file);
-            this.hideLoading();
+            this.hideLoading(file.id);
             return;
         }
         
         try {
-            this.showLoading();
+            this.showLoading(file.id);
             let musicData = await db.getMusic(file.id);
             
             if (!musicData) {
@@ -288,10 +301,10 @@ class MusicPlayer {
             
             this.notifyStateChange();
 
-            this.hideLoading();
+            this.hideLoading(file.id);
         } catch (error) {
             console.error('ファイル再生エラー:', error);
-            this.hideLoading();
+            this.hideLoading(file.id);
         }
     }
 
