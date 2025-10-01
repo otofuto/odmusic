@@ -200,22 +200,27 @@ class MusicPlayer {
     }
 
     showLoading(fileId) {
-        const item = document.getElementById('fileList').querySelector(`[data-file-id="${fileId}"]`);
-        if (item) {
-            const cln = this.loadingIndicator.cloneNode(true);
-            cln.style.display = 'inline-block';
-            cln.id = null;
-            item.querySelector('svg').after(cln);
-        } else {
-            this.loadingIndicator.style.display = 'block';
+        if (fileId) {
+            const item = document.getElementById('fileList').querySelector(`[data-file-id="${fileId}"]`);
+            if (item) {
+                const cln = this.loadingIndicator.cloneNode(true);
+                cln.style.display = 'inline-block';
+                cln.id = null;
+                item.querySelector('svg').after(cln);
+                return;
+            }
         }
+        this.loadingIndicator.style.display = 'block';
     }
 
     hideLoading(fileId) {
-        const item = document.getElementById('fileList').querySelector(`[data-file-id="${fileId}"]`);
-        if (item) {
-            const cln = item.querySelector('.loading-indicator');
-            if (cln) cln.remove();
+        if (fileId) {
+            const item = document.getElementById('fileList').querySelector(`[data-file-id="${fileId}"]`);
+            if (item) {
+                const cln = item.querySelector('.loading-indicator');
+                if (cln) cln.remove();
+                return;
+            }
         }
         this.loadingIndicator.style.display = 'none';
     }

@@ -1,4 +1,4 @@
-var CACHE_NAME = "odmusic-20250404-04";
+var CACHE_NAME = "odmusic-20251001-01";
 var urlsToCache = [
 	"/index.html",
 ];

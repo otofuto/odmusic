@@ -5,6 +5,7 @@ class App {
         this.currentAlbum = null;
         this.addToAlbumMode = false;
         this.selectedFile = null;
+        this.musicFilesCache = new Map();
 
         this.fileList = document.getElementById('fileList');
         this.backButton = document.getElementById('backButton');
@@ -34,6 +35,7 @@ class App {
         this.setupConfirmDeleteModalListeners();
 
         this.currentPlayingFileId = null;
+        this.currentViewType = 'folder';
     }
 
     async initialize() {
@@ -116,6 +118,7 @@ class App {
 
     async loadFolder(folderId, folderName = '') {
         this.currentAlbum = null;
+        this.currentViewType = 'folder';
         
         if (this.currentFolderId) {
             this.pathStack.push({
@@ -138,6 +141,7 @@ class App {
 
     async loadAlbum(album) {
         this.currentAlbum = album;
+        this.currentViewType = 'album';
         this.currentPath.textContent = album.name;
         
         if (this.currentFolderId) {
@@ -155,6 +159,15 @@ class App {
 
     renderAlbumSongs(songs) {
         this.fileList.innerHTML = '';
+
+        // アルバム内楽曲のソート：50件以下なら名前順、50件を超える場合は現在のまま
+        if (songs.length <= 50) {
+            songs.sort((a, b) => {
+                const fileNameA = a.file_path.split('/').pop();
+                const fileNameB = b.file_path.split('/').pop();
+                return fileNameA.localeCompare(fileNameB);
+            });
+        }
 
         songs.forEach(song => {
             const item = document.createElement('div');
@@ -249,6 +262,7 @@ class App {
             if (previousItem.isAlbum) {
                 this.loadAlbum(previousItem.album);
             } else {
+                this.currentViewType = 'folder';
                 this.showLoading();
                 auth.listFiles(this.currentFolderId).then(files => this.renderFileList(files));
             }
@@ -257,6 +271,7 @@ class App {
                 if (folder) {
                     this.currentFolderId = folder.id;
                     this.currentPath.textContent = folder.name;
+                    this.currentViewType = 'folder';
                     //this.backButton.hidden = this.pathStack.length === 0;
 
                     this.showLoading();
@@ -267,11 +282,33 @@ class App {
     }
 
     async renderFileList(files) {
+        // アルバム表示中なら処理をスキップ
+        if (this.currentViewType === 'album') {
+            return;
+        }
+        
         this.fileList.innerHTML = '';
         
         // フォルダとファイルを分離
         const folders = files.filter(f => f.folder);
         const nonFolders = files.filter(f => !f.folder);
+        
+        // 音楽ファイルをキャッシュに保存
+        const musicFiles = nonFolders.filter(f => 
+            ['mp3', 'aac', 'm4a'].includes(f.name.split('.').pop().toLowerCase())
+        );
+        
+        // 音楽ファイルのソート：50件以下なら名前順、50件を超える場合は作成日順（新しい順）
+        if (musicFiles.length <= 50) {
+            musicFiles.sort((a, b) => a.name.localeCompare(b.name));
+        } else {
+            musicFiles.sort((a, b) => {
+                if (new Date(a.fileSystemInfo.createdDateTime) < new Date(b.fileSystemInfo.createdDateTime))
+                    return 1;
+                else return -1;
+            });
+        }
+        this.musicFilesCache.set(this.currentFolderId, musicFiles);
 
         // フォルダアクセス履歴を取得
         const folderHistory = await db.getFolderHistory();
@@ -284,12 +321,16 @@ class App {
             return bTime - aTime;
         });
 
-        // ファイルは作成日でソート
-        nonFolders.sort((a, b) => {
-            if (new Date(a.fileSystemInfo.createdDateTime) < new Date(b.fileSystemInfo.createdDateTime))
-                return 1;
-            else return -1;
-        });
+        // ファイルのソート：50件以下なら名前順、50件を超える場合は作成日順（新しい順）
+        if (nonFolders.length <= 50) {
+            nonFolders.sort((a, b) => a.name.localeCompare(b.name));
+        } else {
+            nonFolders.sort((a, b) => {
+                if (new Date(a.fileSystemInfo.createdDateTime) < new Date(b.fileSystemInfo.createdDateTime))
+                    return 1;
+                else return -1;
+            });
+        }
 
         // フォルダを先に表示し、その後にファイルを表示
         const sortedFiles = [...folders, ...nonFolders];
@@ -381,14 +422,29 @@ class App {
                 name: song.file_path.split('/').pop()
             })));
         } else {
-            const files = await auth.listFiles(this.currentFolderId);
-            const musicFiles = files.filter(f => 
-                !f.folder && ['mp3', 'aac', 'm4a'].includes(f.name.split('.').pop().toLowerCase())
-            ).sort((a, b) => {
-                if (new Date(a.fileSystemInfo.createdDateTime) < new Date(b.fileSystemInfo.createdDateTime))
-                    return 1;
-                else return -1;
-            });
+            // キャッシュから音楽ファイル一覧を取得
+            let musicFiles = this.musicFilesCache.get(this.currentFolderId);
+            
+            if (!musicFiles) {
+                // キャッシュにない場合のみOneDriveから取得
+                const files = await auth.listFiles(this.currentFolderId);
+                musicFiles = files.filter(f => 
+                    !f.folder && ['mp3', 'aac', 'm4a'].includes(f.name.split('.').pop().toLowerCase())
+                );
+                
+                // 音楽ファイルのソート：50件以下なら名前順、50件を超える場合は作成日順（新しい順）
+                if (musicFiles.length <= 50) {
+                    musicFiles.sort((a, b) => a.name.localeCompare(b.name));
+                } else {
+                    musicFiles.sort((a, b) => {
+                        if (new Date(a.fileSystemInfo.createdDateTime) < new Date(b.fileSystemInfo.createdDateTime))
+                            return 1;
+                        else return -1;
+                    });
+                }
+                this.musicFilesCache.set(this.currentFolderId, musicFiles);
+            }
+            
             player.play(file, musicFiles);
         }
     }
