@@ -1,7 +1,7 @@
 class MusicDB {
     constructor() {
         this.dbName = 'ODMusicDB';
-        this.version = 2;
+        this.version = 3;
         this.db = null;
     }
 
@@ -44,16 +44,22 @@ class MusicDB {
                     const folderHistoryStore = db.createObjectStore('folder_history', { keyPath: 'id' });
                     folderHistoryStore.createIndex('last_accessed_at', 'last_accessed_at', { unique: false });
                 }
+
+                // 最後に表示した画面の状態を保存するストア
+                if (!db.objectStoreNames.contains('last_view')) {
+                    db.createObjectStore('last_view', { keyPath: 'id' });
+                }
             };
         });
     }
 
-    async saveMusic(id, blob) {
+    async saveMusic(id, blob, lastModified) {
         const tx = this.db.transaction(['music'], 'readwrite');
         const store = tx.objectStore('music');
         await store.put({
             id,
             blob,
+            lastModified: lastModified || null,
             savedAt: new Date().getTime()
         });
     }
@@ -64,6 +70,16 @@ class MusicDB {
         return new Promise((resolve, reject) => {
             const request = store.get(id);
             request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async deleteMusicCache(id) {
+        const tx = this.db.transaction(['music'], 'readwrite');
+        const store = tx.objectStore('music');
+        return new Promise((resolve, reject) => {
+            const request = store.delete(id);
+            request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
     }
@@ -203,12 +219,12 @@ class MusicDB {
             const tx = this.db.transaction(['albums', 'album_songs'], 'readwrite');
             const albumsStore = tx.objectStore('albums');
             const albumSongsStore = tx.objectStore('album_songs');
-            
+
             try {
                 // まずalbum_songsから該当アルバムの曲をすべて削除
                 const index = albumSongsStore.index('album_id');
                 const cursorRequest = index.openCursor(IDBKeyRange.only(albumId));
-                
+
                 cursorRequest.onsuccess = (event) => {
                     const cursor = event.target.result;
                     if (cursor) {
@@ -222,10 +238,31 @@ class MusicDB {
                     }
                 };
                 cursorRequest.onerror = () => reject(cursorRequest.error);
-                
+
             } catch (error) {
                 reject(error);
             }
+        });
+    }
+
+    async saveLastView(viewType, data) {
+        const tx = this.db.transaction(['last_view'], 'readwrite');
+        const store = tx.objectStore('last_view');
+        await store.put({
+            id: 'last',
+            type: viewType, // 'folder' or 'album'
+            data: data,
+            timestamp: new Date().getTime()
+        });
+    }
+
+    async getLastView() {
+        const tx = this.db.transaction(['last_view'], 'readonly');
+        const store = tx.objectStore('last_view');
+        return new Promise((resolve, reject) => {
+            const request = store.get('last');
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
         });
     }
 }

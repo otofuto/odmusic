@@ -42,16 +42,29 @@ class App {
     async initialize() {
         await db.init();
         await auth.initialize();
-        
-        // IndexedDBにアクセス履歴があったらそれを開く
-        let last_id = await db.getLastAccessedFolderId();
-        if (last_id) {
-            this.currentFolderId = last_id;
+
+        // 最後に表示していた画面を復元
+        const lastView = await db.getLastView();
+
+        if (lastView) {
+            if (lastView.type === 'album') {
+                // アルバムを表示
+                const albums = await db.getAllAlbums();
+                const album = albums.find(a => a.id === lastView.data.albumId);
+                if (album) {
+                    await this.loadAlbum(album);
+                } else {
+                    // アルバムが削除されている場合はフォルダを表示
+                    await this.loadDefaultFolder();
+                }
+            } else if (lastView.type === 'folder') {
+                // フォルダを表示
+                this.currentFolderId = lastView.data.folderId;
+                await this.loadFolder(lastView.data.folderId, lastView.data.folderName);
+            }
         } else {
-            this.currentFolderId = await auth.getMusicFolderId();
-        }
-        if (this.currentFolderId) {
-            this.loadFolder(this.currentFolderId);
+            // 初回起動時はデフォルトのフォルダを表示
+            await this.loadDefaultFolder();
         }
 
         await db.cleanupOldMusic();
@@ -62,6 +75,22 @@ class App {
         });
 
         await player.initialize();
+    }
+
+    async loadDefaultFolder() {
+        // デフォルトのフォルダ（最後にアクセスしたフォルダまたは音楽フォルダ）を開く
+        const folderHistory = await db.getFolderHistory();
+        if (folderHistory && folderHistory.length > 0) {
+            // 最後にアクセスしたフォルダを開く
+            const lastFolder = folderHistory.sort((a, b) => b.last_accessed_at - a.last_accessed_at)[0];
+            await this.loadFolder(lastFolder.id, lastFolder.name);
+        } else {
+            // 音楽フォルダを開く
+            const musicFolder = await auth.getMusicFolderInfo();
+            if (musicFolder) {
+                await this.loadFolder(musicFolder.id, musicFolder.name);
+            }
+        }
     }
 
     updatePlayingIcon() {
@@ -136,6 +165,9 @@ class App {
         // フォルダアクセス履歴を更新
         await db.updateFolderAccess(folderId, folderName);
 
+        // 最後の表示状態を保存
+        await db.saveLastView('folder', { folderId, folderName });
+
         this.showLoading();
         const files = await auth.listFiles(folderId);
         this.renderFileList(files);
@@ -154,7 +186,10 @@ class App {
                 isAlbum: false
             });
         }
-        
+
+        // 最後の表示状態を保存
+        await db.saveLastView('album', { albumId: album.id, albumName: album.name });
+
         const songs = await db.getAlbumSongs(album.id);
         this.renderAlbumSongs(songs);
         this.hideAlbumModal();
@@ -256,6 +291,27 @@ class App {
         });
     }
 
+    async validateMusicCache(musicFiles) {
+        // 各音楽ファイルについて、キャッシュが古い場合は削除
+        for (const file of musicFiles) {
+            try {
+                const cachedMusic = await db.getMusic(file.id);
+                if (cachedMusic && cachedMusic.lastModified) {
+                    const oneDriveModified = new Date(file.fileSystemInfo.lastModifiedDateTime).getTime();
+                    const cachedModified = new Date(cachedMusic.lastModified).getTime();
+
+                    // OneDrive上のファイルがキャッシュより新しい場合、キャッシュを削除
+                    if (oneDriveModified > cachedModified) {
+                        console.log(`Cache outdated for ${file.name}, deleting...`);
+                        await db.deleteMusicCache(file.id);
+                    }
+                }
+            } catch (error) {
+                console.error(`Error validating cache for ${file.name}:`, error);
+            }
+        }
+    }
+
     navigateBack() {
         // 検索状態がアクティブな場合は検索をクリア
         if (this.isSearchActive) {
@@ -303,10 +359,13 @@ class App {
         const nonFolders = files.filter(f => !f.folder);
         
         // 音楽ファイルをキャッシュに保存
-        const musicFiles = nonFolders.filter(f => 
+        const musicFiles = nonFolders.filter(f =>
             ['mp3', 'aac', 'm4a'].includes(f.name.split('.').pop().toLowerCase())
         );
-        
+
+        // キャッシュの検証：OneDrive上のファイルが更新されていたら古いキャッシュを削除
+        await this.validateMusicCache(musicFiles);
+
         // 音楽ファイルのソート：50件以下なら名前順、50件を超える場合は作成日順（新しい順）
         if (musicFiles.length <= 50) {
             musicFiles.sort((a, b) => a.name.localeCompare(b.name));
@@ -513,7 +572,7 @@ class App {
         albums.forEach(album => {
             const item = document.createElement('div');
             item.className = 'album-item';
-            item.textContent = `${album.name} (${album.used_count}回再生)`;
+            item.textContent = album.name;
             
             item.addEventListener('click', async () => {
                 if (this.addToAlbumMode && this.selectedFile) {
@@ -616,8 +675,10 @@ class App {
     }
 
     async moveToMusicFolder() {
-        this.currentFolderId = await auth.getMusicFolderId();
-        this.loadFolder(this.currentFolderId);
+        const musicFolder = await auth.getMusicFolderInfo();
+        if (musicFolder) {
+            this.loadFolder(musicFolder.id, musicFolder.name);
+        }
     }
 
     showNotification(message, timeout = 5000) {

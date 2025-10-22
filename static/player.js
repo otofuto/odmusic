@@ -270,10 +270,11 @@ class MusicPlayer {
         try {
             this.showLoading(file.id);
             let musicData = await db.getMusic(file.id);
-            
+
             if (!musicData) {
                 const blob = await auth.downloadFile(file);
-                await db.saveMusic(file.id, blob);
+                const lastModified = file.fileSystemInfo?.lastModifiedDateTime || file.lastModifiedDateTime;
+                await db.saveMusic(file.id, blob, lastModified);
                 musicData = await db.getMusic(file.id);
             }
 
@@ -335,11 +336,12 @@ class MusicPlayer {
         try {
             this.isPreloading = true;
             let musicData = await db.getMusic(nextFile.id);
-            
+
             if (!musicData) {
                 console.log('次のトラックをプリロード中:', nextFile.name);
                 const blob = await auth.downloadFile(nextFile);
-                await db.saveMusic(nextFile.id, blob);
+                const lastModified = nextFile.fileSystemInfo?.lastModifiedDateTime || nextFile.lastModifiedDateTime;
+                await db.saveMusic(nextFile.id, blob, lastModified);
             }
         } catch (error) {
             console.error('次のトラックのプリロードエラー:', error);

@@ -164,9 +164,21 @@ class OneDriveAuth {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
         const data = await response.json();
-        
+
         const musicFolder = data.value.find(item => item.name === "音楽" && item.folder);
         return musicFolder ? musicFolder.id : null;
+    }
+
+    async getMusicFolderInfo() {
+        const accessToken = await this.getAccessToken();
+        const url = "https://graph.microsoft.com/v1.0/me/drive/root/children";
+        const response = await fetch(url, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        const data = await response.json();
+
+        const musicFolder = data.value.find(item => item.name === "音楽" && item.folder);
+        return musicFolder ? { id: musicFolder.id, name: musicFolder.name } : null;
     }
 
     async listFiles(folderId) {
