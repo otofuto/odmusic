@@ -36,6 +36,7 @@ class App {
 
         this.currentPlayingFileId = null;
         this.currentViewType = 'folder';
+        this.isSearchActive = false;
     }
 
     async initialize() {
@@ -119,7 +120,8 @@ class App {
     async loadFolder(folderId, folderName = '') {
         this.currentAlbum = null;
         this.currentViewType = 'folder';
-        
+        this.isSearchActive = false;
+
         if (this.currentFolderId) {
             this.pathStack.push({
                 id: this.currentFolderId,
@@ -142,8 +144,9 @@ class App {
     async loadAlbum(album) {
         this.currentAlbum = album;
         this.currentViewType = 'album';
+        this.isSearchActive = false;
         this.currentPath.textContent = album.name;
-        
+
         if (this.currentFolderId) {
             this.pathStack.push({
                 id: this.currentFolderId,
@@ -254,6 +257,12 @@ class App {
     }
 
     navigateBack() {
+        // 検索状態がアクティブな場合は検索をクリア
+        if (this.isSearchActive) {
+            this.clearSearch();
+            return;
+        }
+
         if (this.pathStack.length > 1) {
             const previousItem = this.pathStack.pop();
             this.currentFolderId = previousItem.id;
@@ -417,6 +426,16 @@ class App {
         if (this.currentAlbum) {
             const songs = await db.getAlbumSongs(this.currentAlbum.id);
             await db.incrementAlbumUsage(this.currentAlbum.id);
+
+            // アルバム内楽曲のソート：50件以下なら名前順、50件を超える場合は現在のまま
+            if (songs.length <= 50) {
+                songs.sort((a, b) => {
+                    const fileNameA = a.file_path.split('/').pop();
+                    const fileNameB = b.file_path.split('/').pop();
+                    return fileNameA.localeCompare(fileNameB);
+                });
+            }
+
             player.play(file, songs.map(song => ({
                 id: song.file_id,
                 name: song.file_path.split('/').pop()
@@ -545,7 +564,17 @@ class App {
             this.showNotification('結果がありませんでした', 1000);
         }
 
+        this.isSearchActive = true;
         this.hideSearchModal();
+    }
+
+    clearSearch() {
+        const fileItems = this.fileList.querySelectorAll('.file-item');
+        fileItems.forEach(item => {
+            item.style.display = 'flex';
+        });
+        this.isSearchActive = false;
+        this.searchWord.value = '';
     }
 
     async createAlbum() {

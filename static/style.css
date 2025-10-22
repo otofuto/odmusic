@@ -76,6 +76,10 @@ header h1::before {
     gap: 0.5rem;
 }
 
+#currentPath::before {
+    content: '現在: ';
+}
+
 #fileList {
     padding: 1rem;
 }
